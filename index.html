@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전해질과 비전해질의 이동 실험</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 좌측 제어 패널 */
+        .sidebar {
+            width: 340px;
+            background: white;
+            padding: 25px 20px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .sidebar h1 {
+            font-size: 22px;
+            color: #2c3e50;
+            margin: 0 0 10px 0;
+            line-height: 1.3;
+        }
+
+        .select-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+
+        .select-group label {
+            font-weight: bold;
+            color: #34495e;
+            font-size: 15px;
+        }
+
+        select {
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #bdc3c7;
+            border-radius: 8px;
+            outline: none;
+            cursor: pointer;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        select:focus { border-color: #3498db; }
+
+        .step-btn {
+            padding: 14px;
+            font-size: 16px;
+            font-weight: bold;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            background-color: white;
+            color: #3498db;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+
+        .step-btn:hover:not(:disabled) { background-color: #ebf5fb; }
+        .step-btn.active { background-color: #3498db; color: white; }
+        .step-btn:disabled {
+            border-color: #bdc3c7;
+            color: #bdc3c7;
+            cursor: not-allowed;
+            background-color: #f9f9f9;
+        }
+
+        .status-box {
+            margin-top: auto;
+            padding: 15px;
+            background: #fff3cd;
+            border-left: 6px solid #ffc107;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            color: #856404;
+            line-height: 1.5;
+            word-break: keep-all;
+        }
+
+        .notice {
+            font-size: 12px;
+            color: #e74c3c;
+            margin-top: 5px;
+            display: none;
+        }
+
+        /* 우측 시뮬레이션 영역 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #e8ecef;
+            position: relative;
+        }
+
+        canvas {
+            background-color: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .reset-btn {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .reset-btn:hover { background-color: #c0392b; }
+
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h1>전해질 & 비전해질<br>전류 흐름 실험</h1>
+        
+        <div class="select-group">
+            <label for="soluteSelect">🧪 실험 물질 선택</label>
+            <select id="soluteSelect">
+                <option value="basic">기본 이온 (+, -)</option>
+                <option value="nacl">염화 나트륨 (NaCl)</option>
+                <option value="cacl2">염화 칼슘 (CaCl₂)</option>
+                <option value="caco3">탄산 칼슘 (CaCO₃)</option>
+                <option value="sugar">설탕 (비전해질)</option>
+            </select>
+        </div>
+
+        <button id="btnStep1" class="step-btn">1. 전극 넣기</button>
+        <button id="btnStep2" class="step-btn" disabled>2. 물(증류수) 붓기</button>
+        <button id="btnStep3" class="step-btn" disabled>3. 용질 녹이기</button>
+        <button id="btnStep4" class="step-btn" disabled>4. 전원 켜기</button>
+
+        <div class="status-box" id="statusText">
+            실험 물질을 선택한 후,<br><strong>[1. 전극 넣기]</strong> 버튼을 클릭하세요.
+            <div id="caco3Notice" class="notice">※ 참고: 탄산칼슘은 물에 잘 녹지 않는 앙금이지만, 실험 모형 관찰을 위해 일부 녹은 상태로 가상 표현했습니다.</div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <canvas id="simCanvas" width="800" height="600"></canvas>
+        <button id="btnReset" class="reset-btn">처음부터 다시하기</button>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const soluteSelect = document.getElementById('soluteSelect');
+    const btnStep1 = document.getElementById('btnStep1');
+    const btnStep2 = document.getElementById('btnStep2');
+    const btnStep3 = document.getElementById('btnStep3');
+    const btnStep4 = document.getElementById('btnStep4');
+    const btnReset = document.getElementById('btnReset');
+    const statusText = document.getElementById('statusText');
+    const caco3Notice = document.getElementById('caco3Notice');
+
+    let currentStep = 0;
+    let liquidLevel = 0; 
+    let ions = [];
+    let isPowerOn = false;
+    let animationId;
+
+    // 비커 및 전극 위치
+    const beakerX = 250, beakerY = 250, beakerW = 300, beakerH = 250;
+    const electrodeW = 24, electrodeH = 200;
+    const electrodePlusX = 290; 
+    const electrodeMinusX = 486; 
+
+    // 물질 데이터 정의 (전해질 및 비전해질)
+    const soluteData = {
+        basic: {
+            name: "기본 이온",
+            btnName: "기본 이온 분리하기",
+            isNonElectrolyte: false,
+            // 폰트 크기(fontSize)를 28px로 대폭 키우고, 반지름도 살짝 키움
+            cation: { symbol: '+', charge: 1, count: 12, color: '#e74c3c', radius: 20, fontSize: '28px' },
+            anion: { symbol: '-', charge: -1, count: 12, color: '#3498db', radius: 20, fontSize: '28px' },
+            desc: "<strong>양이온(+)</strong>과 <strong>음이온(-)</strong>으로 분리되었습니다."
+        },
+        nacl: {
+            name: "염화 나트륨",
+            btnName: "염화 나트륨(NaCl) 녹이기",
+            isNonElectrolyte: false,
+            cation: { symbol: 'Na⁺', charge: 1, count: 12, color: '#ff7675', radius: 17, fontSize: '13px' },
+            anion: { symbol: 'Cl⁻', charge: -1, count: 12, color: '#74b9ff', radius: 17, fontSize: '13px' },
+            desc: "<strong>Na⁺</strong>와 <strong>Cl⁻</strong> (1:1 비율)로 이온화되었습니다."
+        },
+        cacl2: {
+            name: "염화 칼슘",
+            btnName: "염화 칼슘(CaCl₂) 녹이기",
+            isNonElectrolyte: false,
+            cation: { symbol: 'Ca²⁺', charge: 2, count: 8, color: '#fdcb6e', radius: 19, fontSize: '13px' },
+            anion: { symbol: 'Cl⁻', charge: -1, count: 16, color: '#74b9ff', radius: 16, fontSize: '13px' },
+            desc: "<strong>Ca²⁺</strong> 1개당 <strong>Cl⁻</strong> 2개 (1:2 비율)로 이온화되었습니다."
+        },
+        caco3: {
+            name: "탄산 칼슘",
+            btnName: "탄산 칼슘(CaCO₃) 녹이기",
+            isNonElectrolyte: false,
+            cation: { symbol: 'Ca²⁺', charge: 2, count: 10, color: '#fdcb6e', radius: 19, fontSize: '13px' },
+            anion: { symbol: 'CO₃²⁻', charge: -2, count: 10, color: '#00b894', radius: 21, fontSize: '12px' },
+            desc: "<strong>Ca²⁺</strong>와 <strong>CO₃²⁻</strong> (1:1 비율)로 이온화되었습니다."
+        },
+        sugar: {
+            name: "설탕",
+            btnName: "설탕(비전해질) 녹이기",
+            isNonElectrolyte: true,
+            molecule: { symbol: '설탕', charge: 0, count: 22, color: '#9b59b6', radius: 19, fontSize: '14px' },
+            desc: "설탕은 <strong>비전해질</strong>이므로 이온으로 나뉘지 않고 <strong>분자 상태</strong>를 유지합니다."
+        }
+    };
+
+    // 셀렉트 박스 변경 이벤트
+    soluteSelect.addEventListener('change', () => {
+        resetExperiment();
+        btnStep3.textContent = `3. ${soluteData[soluteSelect.value].btnName}`;
+    });
+
+    // 이온 및 분자 생성 로직
+    function createIons() {
+        ions = [];
+        const type = soluteSelect.value;
+        const data = soluteData[type];
+        
+        const startX = beakerX + beakerW / 2;
+        const startY = beakerY + beakerH - liquidLevel + 30;
+
+        if (data.isNonElectrolyte) {
+            // 비전해질(설탕) 생성 - 전하량(charge)이 0임
+            for (let i = 0; i < data.molecule.count; i++) {
+                ions.push({
+                    symbol: data.molecule.symbol,
+                    charge: data.molecule.charge,
+                    x: startX + (Math.random() - 0.5) * 50,
+                    y: startY + (Math.random() - 0.5) * 50,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    radius: data.molecule.radius,
+                    bgColor: data.molecule.color,
+                    fontSize: data.molecule.fontSize
+                });
+            }
+        } else {
+            // 전해질 양이온 생성
+            for (let i = 0; i < data.cation.count; i++) {
+                ions.push({
+                    symbol: data.cation.symbol,
+                    charge: data.cation.charge,
+                    x: startX + (Math.random() - 0.5) * 50,
+                    y: startY + (Math.random() - 0.5) * 50,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    radius: data.cation.radius,
+                    bgColor: data.cation.color,
+                    fontSize: data.cation.fontSize
+                });
+            }
+            // 전해질 음이온 생성
+            for (let i = 0; i < data.anion.count; i++) {
+                ions.push({
+                    symbol: data.anion.symbol,
+                    charge: data.anion.charge,
+                    x: startX + (Math.random() - 0.5) * 50,
+                    y: startY + (Math.random() - 0.5) * 50,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    radius: data.anion.radius,
+                    bgColor: data.anion.color,
+                    fontSize: data.anion.fontSize
+                });
+            }
+        }
+    }
+
+    // 캔버스 그리기 함수들
+    function drawBackground() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // 테이블
+        ctx.fillStyle = '#ecf0f1';
+        ctx.fillRect(0, beakerY + beakerH, canvas.width, canvas.height);
+        ctx.strokeStyle = '#bdc3c7';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(0, beakerY + beakerH); ctx.lineTo(canvas.width, beakerY + beakerH); ctx.stroke();
+        // 전원 장치
+        ctx.fillStyle = '#7f8c8d'; ctx.fillRect(300, 50, 200, 80);
+        ctx.fillStyle = '#2c3e50'; ctx.fillRect(310, 60, 180, 60);
+        ctx.fillStyle = 'white'; ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('직류 전원 장치', 400, 90);
+        // 상태 표시등
+        ctx.beginPath(); ctx.arc(400, 105, 6, 0, Math.PI * 2);
+        ctx.fillStyle = isPowerOn ? '#2ecc71' : '#e74c3c'; ctx.fill();
+        // 단자
+        ctx.fillStyle = '#e74c3c'; ctx.fillRect(330, 110, 20, 20);
+        ctx.fillStyle = '#34495e'; ctx.fillRect(450, 110, 20, 20);
+    }
+
+    function drawElectrodes() {
+        if (currentStep < 1) return;
+        // 전선
+        ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(340, 130); ctx.lineTo(340, 180); ctx.lineTo(electrodePlusX + electrodeW/2, 180); ctx.lineTo(electrodePlusX + electrodeW/2, beakerY + 50); ctx.stroke();
+        ctx.strokeStyle = '#34495e';
+        ctx.beginPath(); ctx.moveTo(460, 130); ctx.lineTo(460, 180); ctx.lineTo(electrodeMinusX + electrodeW/2, 180); ctx.lineTo(electrodeMinusX + electrodeW/2, beakerY + 50); ctx.stroke();
+
+        // (+) 전극
+        ctx.fillStyle = '#555'; ctx.fillRect(electrodePlusX, beakerY + 30, electrodeW, electrodeH);
+        ctx.beginPath(); ctx.arc(electrodePlusX + electrodeW/2, beakerY + 110, 20, 0, Math.PI*2);
+        ctx.fillStyle = '#e74c3c'; ctx.fill(); ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = 'white'; ctx.font = 'bold 28px Arial'; ctx.fillText('+', electrodePlusX + electrodeW/2, beakerY + 112);
+
+        // (-) 전극
+        ctx.fillStyle = '#333'; ctx.fillRect(electrodeMinusX, beakerY + 30, electrodeW, electrodeH);
+        ctx.beginPath(); ctx.arc(electrodeMinusX + electrodeW/2, beakerY + 110, 20, 0, Math.PI*2);
+        ctx.fillStyle = '#3498db'; ctx.fill(); ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = 'white'; ctx.font = 'bold 28px Arial'; ctx.fillText('-', electrodeMinusX + electrodeW/2, beakerY + 110);
+    }
+
+    function drawBeakerAndLiquid() {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.fillRect(beakerX, beakerY, beakerW, beakerH);
+        if (currentStep >= 2) {
+            ctx.fillStyle = 'rgba(173, 216, 230, 0.4)'; 
+            ctx.fillRect(beakerX + 5, beakerY + beakerH - liquidLevel, beakerW - 10, liquidLevel);
+        }
+        ctx.strokeStyle = '#bdc3c7'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(beakerX, beakerY - 20); ctx.lineTo(beakerX, beakerY + beakerH); ctx.lineTo(beakerX + beakerW, beakerY + beakerH); ctx.lineTo(beakerX + beakerW, beakerY - 20); ctx.stroke();
+    }
+
+    function drawIons() {
+        if (currentStep < 3) return;
+
+        const leftBound = electrodePlusX + electrodeW;
+        const rightBound = electrodeMinusX;
+        const bottomBound = beakerY + beakerH - 5;
+        const topBound = beakerY + beakerH - liquidLevel + 10;
+
+        ions.forEach(ion => {
+            if (isPowerOn) {
+                // 전기력: charge가 0이면 힘을 받지 않음
+                if (ion.charge > 0) { 
+                    // 양이온 -> (-)극(오른쪽)으로
+                    if (ion.x < rightBound - ion.radius - 2) { ion.vx += 0.12 * ion.charge; } 
+                    else { ion.vx = 0; ion.vy *= 0.5; }
+                } else if (ion.charge < 0) { 
+                    // 음이온 -> (+)극(왼쪽)으로 (charge가 음수라 뺄셈 효과)
+                    if (ion.x > leftBound + ion.radius + 2) { ion.vx += 0.12 * ion.charge; } 
+                    else { ion.vx = 0; ion.vy *= 0.5; }
+                } else {
+                    // 전하가 0인 경우(비전해질: 설탕) -> 전극으로 안 가고 제자리 브라운 운동
+                    ion.vx += (Math.random() - 0.5) * 1.5;
+                    ion.vy += (Math.random() - 0.5) * 1.5;
+                }
+                ion.vx *= 0.90; // 마찰력(속도 제한)
+            } else {
+                // 전원 꺼짐: 확산 브라운 운동
+                ion.vx += (Math.random() - 0.5) * 1.5;
+                ion.vy += (Math.random() - 0.5) * 1.5;
+                ion.vx *= 0.95;
+                ion.vy *= 0.95;
+            }
+
+            ion.x += ion.vx;
+            ion.y += ion.vy;
+
+            // 벽면 충돌
+            if (ion.x < leftBound + ion.radius) { ion.x = leftBound + ion.radius; ion.vx *= -0.5; }
+            if (ion.x > rightBound - ion.radius) { ion.x = rightBound - ion.radius; ion.vx *= -0.5; }
+            if (ion.y < topBound + ion.radius) { ion.y = topBound + ion.radius; ion.vy *= -0.5; }
+            if (ion.y > bottomBound - ion.radius) { ion.y = bottomBound - ion.radius; ion.vy *= -0.5; }
+
+            // 모형 렌더링
+            ctx.beginPath(); ctx.arc(ion.x, ion.y, ion.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ion.bgColor; ctx.fill();
+            ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5; ctx.stroke();
+
+            // 내부 기호/텍스트 출력 (설정된 폰트 크기 사용)
+            ctx.fillStyle = 'white'; 
+            ctx.font = `bold ${ion.fontSize} Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(ion.symbol, ion.x, ion.y + 1);
+        });
+    }
+
+    function animate() {
+        drawBackground();
+        drawElectrodes();
+        drawBeakerAndLiquid();
+        drawIons();
+
+        if (currentStep === 2 && liquidLevel < 200) {
+            liquidLevel += 4;
+            if (liquidLevel >= 200) {
+                liquidLevel = 200;
+                btnStep3.disabled = false;
+                statusText.innerHTML = "물이 채워졌습니다.<br><strong>[3. 용질 녹이기]</strong> 버튼을 눌러주세요.";
+            }
+        }
+        animationId = requestAnimationFrame(animate);
+    }
+
+    // 초기화 함수
+    function resetExperiment() {
+        currentStep = 0; liquidLevel = 0; ions = []; isPowerOn = false;
+        caco3Notice.style.display = 'none';
+        
+        [btnStep1, btnStep2, btnStep3, btnStep4].forEach(btn => {
+            btn.disabled = true; btn.classList.remove('active');
+        });
+        btnStep1.disabled = false;
+        
+        const type = soluteSelect.value;
+        const data = soluteData[type];
+        btnStep3.textContent = `3. ${data.btnName}`;
+
+        statusText.innerHTML = "실험 물질이 변경 및 초기화되었습니다.<br><strong>[1. 전극 넣기]</strong> 버튼을 클릭하세요.";
+    }
+
+    // --- 버튼 이벤트 ---
+    btnStep1.addEventListener('click', () => {
+        currentStep = 1; btnStep1.classList.add('active'); btnStep1.disabled = true; btnStep2.disabled = false;
+        statusText.innerHTML = "비커에 두 전극을 설치했습니다.<br><strong>[2. 물(증류수) 붓기]</strong> 버튼을 눌러주세요.";
+    });
+
+    btnStep2.addEventListener('click', () => {
+        currentStep = 2; btnStep2.classList.add('active'); btnStep2.disabled = true;
+        statusText.innerHTML = "물을 붓고 있습니다... (기다려주세요)";
+    });
+
+    btnStep3.addEventListener('click', () => {
+        currentStep = 3; btnStep3.classList.add('active'); btnStep3.disabled = true; btnStep4.disabled = false;
+        createIons();
+        
+        const type = soluteSelect.value;
+        statusText.innerHTML = `${soluteData[type].desc}<br><strong>[4. 전원 켜기]</strong> 버튼을 누르세요.`;
+        if (type === 'caco3') caco3Notice.style.display = 'block';
+    });
+
+    btnStep4.addEventListener('click', () => {
+        currentStep = 4; isPowerOn = true; btnStep4.classList.add('active'); btnStep4.disabled = true;
+        const type = soluteSelect.value;
+        const data = soluteData[type];
+        
+        // 전해질과 비전해질(설탕)의 전원 켰을 때 안내 문구 분기 처리
+        if (data.isNonElectrolyte) {
+            statusText.innerHTML = `<strong>전원 ON!</strong><br>설탕은 전하를 띠지 않는 <strong>비전해질</strong>이므로 전극으로 끌려가지 않고 물속에 그대로 떠다닙니다.`;
+        } else {
+            statusText.innerHTML = `<strong>전원 ON!</strong><br><span style="color:${data.cation.color}">양이온(${data.cation.symbol})</span>은 (-)극으로,<br><span style="color:${data.anion.color}">음이온(${data.anion.symbol})</span>은 (+)극으로 이동합니다.`;
+        }
+        
+        if (type === 'caco3') caco3Notice.style.display = 'block';
+    });
+
+    btnReset.addEventListener('click', resetExperiment);
+
+    // 시작 세팅
+    btnStep3.textContent = `3. ${soluteData[soluteSelect.value].btnName}`;
+    animate();
+
+</script>
+</body>
+</html>
